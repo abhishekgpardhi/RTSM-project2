@@ -1,0 +1,254 @@
+---
+title: "R Notebook"
+author: "Abhishek Pardhi"
+output: html_notebook
+---
+## Time-Series Forecasting of Reliance Power Limited Stock Prices
+
+### 1. Initial Setup
+
+#### 1.1. Clearing Previously Loaded Objects from Memory
+
+First, I wanted a clean slate to start running our code, and that is why I removed all currently loaded objects from R environment.\
+ls() function gives a list of current objects loaded in r environment, and rm() function removes given object from memory.
+
+```{r}
+rm(list=ls())
+```
+
+#### 1.2. Installing and Loading Packages
+
+Now, we are installing and loading all the required packages to do our analysis, plotting graphs, and creating models.\
+"install.packages()" installs all the packages required, and then lapply() function loads them one by one.
+
+```{r}
+# Required Packages
+packages = c('quantmod','tseries', 'forecast','FinTS', 'rugarch', 'dplyr', 'ggplot2', 'zoo', 'lmtest', 'knitr', 'kableExtra')
+
+# Installing the Required Packages
+# install.packages(packages, dependencies = TRUE)
+
+# Loading the Required Packages
+lapply(packages, require, character.only = TRUE)
+
+
+
+```
+
+### 2. Data Preparation
+
+#### 2.1. Fetching Reliance Power Limited Daily Stock Price Data of Last 10 Years
+
+I've chosen Reliance Limited Daily Stock Price Data to do my time-series analysis. I went to yahoo finance and checked the symbols for the Reliance Power Limited stock listed on the National Stock Exchange.\
+Using the symbol of Reliance Power Limited in getSymbols() function, I fetched the daily stock data for past 10 years, and stored its daily adjusted closing price in an xts time series variable named **"ap_price_xts".**
+
+```{r}
+stock_data = new.env()
+stock_list = c('RPOWER.NS')
+start_date = as.Date('2015-01-01'); end_date = as.Date('2019-12-31')
+getSymbols(Symbols = stock_list, from = start_date, to = end_date, env = stock_data)
+stock_price=na.omit(stock_data$RPOWER.NS$RPOWER.NS.Adjusted)
+#pnj_price
+
+#stock_price = RPOWER.NS$RPOWER.NS.Close # Adjusted Closing Price
+class(stock_price) # xts (Time-Series) Object
+stock_price
+```
+
+
+```{r}
+# ---------------------------------------------------------------------------------------------
+
+# Forecasting with Time-Series Data (Univariate) : Procedure
+# **********************************************************
+
+# Given an Univariate Time-Series Data, Perform the following Analysis :
+
+# Step 1 : Check for (Weak) Stationarity :: Augmented Dickey-Fuller (ADF) Test
+# If [Data] Stationary, Proceed to Step 2
+# If [Data] Non-Stationary, Use Transformation (such as First/Second/... Difference | Log | ...) to Transform the Data and Check for Stationarity (Step 1)
+
+# Step 2 : Check for Autocorrelation :: Ljung-Box Test 
+# If [Data | Transformed Data] Do Not Have Autocorrelation, proceed to Step 4
+# If [Data | Transformed Data] Has Autocorrelation, Proceed to Step 3
+
+# Step 3 : Model for Autocorrelation :: ARIMA Models
+# Identify AR | MA Order in the [Data | Transformed Data] using PACF | ACF Plots
+# Use ARIMA(p, d, q) with Appropriate AR Order (p-Lags) | d-Degree of Differencing | MA Order (q-Lags) using PACF | ACF Information to Model the [Data | Transformed Data]
+# Test for Autocorrelation in the [Residual Data 1] | If the ARIMA Model is Appropriate : No Autocorrelation in the [Residual Data 1] | If Autocorrelation in [Residual Data 1], Remodel the [Data | Transformed Data]
+# Proceed to Step 4
+
+# Step 4 : Check for Heteroskedasticity :: ARCH LM Test
+# If [Data | Transformed Data] (Step 2) | [Residual Data 1] (Step 3) Do Not Have Heteroskedasticity, Proceed to Step 6
+# If [Data | Transformed Data] (Step 2) | [Residual Data 1] (Step 3) Has Heteroskedasticity, Proceed to Step 5
+
+# Step 5a : Model for Heteroskedasticity in [Data | Transformed Data] (Step 2) :: GARCH Models
+# If Mean of [Data | Transformed Data] (Step 2) != 0 : De-Mean & Square the [Data | Transformed Data] | If Mean of [Data | Transformed Data] (Step 2) = 0 : Square the [Data | Transformed Data] 
+# Identify ARCH | GARCH Order in the using GARCH Function
+# Use GARCH(p,q) with Appropriate ARCH Order (p-Lags) | GARCH Order (q-Lags) to Model the [Data | Transformed Data]
+# Test for Autocorrelation & Heteroskedasticity in the [Residual Data 2] | If the GARCH Model is Appropriate : No Autocorrelation & Heteroskedasticity in the [Residual Data 2] | If Autocorrelation & Heteroskedasticity in [Residual Data 2], Remodel the Squared [Data | Transformed Data]
+# End of Analysis
+
+# Step 5b : Model for Heteroskedasticity in [Residual Data 1] (Step 3) :: GARCH Models
+# Identify ARCH | GARCH Order in the using GARCH Function
+# Use GARCH(p, q) with Appropriate ARCH Order (p-Lags) | GARCH Order (q-Lags) with ARIMA(p, d, q) Model (in Step 3) in the Mean Equation to Model the [Residual Data 1] 
+# Test for Autocorrelation & Heteroskedasticity in the [Residual Data 2] | If the ARIMA+GARCH Model is Appropriate : No Autocorrelation & Heteroskedasticity in the [Residual Data 2] | If Autocorrelation & Heteroskedasticity in [Residual Data 2], Remodel the [Residual Data 1]
+# End of Analysis
+
+# Step 6 : Model White-Noise Data 
+# If the [Data | Transformed Data] is Stationary, Has No Autocorrelation & Heteroskedasticity, the [Data | Transformed Data] is White-Noise Data
+# Model White-Noise Data with Appropriate Probability Distribution
+# End of Analysis
+
+```
+
+```{r}
+# Augmented Dickey-Fuller (ADF) Test for Stationarity with Patanjali Data
+# *******************************************************************
+
+adf_test_pnj = adf.test(stock_price);adf_test_pnj
+# Inference : PNJ Time-Series is Non-Stationary
+
+```
+
+```{r}
+pnj_ds = diff(log(stock_price)); plot(pnj_ds) # Patanjali (First)return Difference Time-Series
+```
+
+```{r}
+pnj_ds=na.omit(pnj_ds)
+adf_test_pnj_ds = adf.test(pnj_ds); adf_test_pnj_ds # Inference : Patanjali Difference Time-Series is Stationary
+
+```
+**Inference:** The trend in data is no longer visible, and it seems that data might have become stationary.
+
+```{r}
+# Ljung-Box Test for Autocorrelation - Patanjali Data
+# ***********************************************
+
+lb_test_pnj_ds = Box.test(pnj_ds); lb_test_pnj_ds # Inference : Patanjali Difference (Stationary) Time-Series is Autocorrelated as NULL is rejected and p-value<0.0151 | NULL: No Auto correlation | Alternate: Auto Correlation
+```
+
+```{r}
+# 3.0.3.2. Autocorrelation Function (ACF) | Partial Autocorrelation Function (PACF)
+# *****************************************************************************
+
+acf(stock_price) # ACF of JJ Series
+pacf(stock_price) # PACF of JJ Series
+
+acf(pnj_ds) # ACF of Patanjali Difference (Stationary) Series
+pacf(pnj_ds) # PACF of Patanjali Difference (Stationary) Series
+```
+**Inference:** We are safe to assume that there is no significant autocorrelation in log returns of Reliance Power Limited.
+
+### 7. ARIMA Modelling for Autocorrelation
+
+#### 7.1. What is ARIMA?
+
+An Auto-Regressive Integrated Moving Average, or ARIMA, is a statistical analysis model that uses time series data to better understand the data and to predict future trends. It has following 3 components:
+
+-   **Autoregression (AR):** It refers to a model that shows a changing variable that regresses on its own lagged, or prior, values.
+
+-   **Integrated (I):** represents the differencing of raw observations to allow the time series to become stationary (i.e., data values are replaced by the difference between the data values and the previous values).
+
+-   **Moving average (MA):** incorporates the dependency between an observation and a residual error from a moving average model applied to lagged observations.
+
+```{r}
+### 7. ARIMA Modelling for Autocorrelation
+
+# 3.1. Auto Regressive Integrated Moving Average (ARIMA) Models
+# *************************************************************
+
+# 3.1.1. ARIMA Models
+# *******************
+
+# AR (p-Lag) Model : y(t) = c1 + a1*y(t-1) + a2*y(t-2) + ... + ap*y(t-p) + e(t) where e = error == White Noise | AR-1 Model : y(t) = c + a1*y(t-1) + e(t)
+# MA (q-Lag) Model : y(t) = c2 + b1*e(t-1) + b2*e(t-2) + ... + bp*e(t-p) where e = Error == White Noise | MA-1 Model : y(t) = d + b1*e(t-1)
+# ARMA (p, q) Model : y(t) = c + a1*y(t-1) + ... + ap*y(t-p) + b1*e(t-1) + ... + bp*e(t-p) + e(t) | ARMA (1, 1) Model : y(t) = c + a1*y(t-1) + b1*e(t-1) + e(t)
+
+# ARIMA(p, d, q) = AR Order (p-Lags) | d-Degree of Differencing | MA Order (q-Lags)
+
+# Note: The Degree of Differencing for a Time Series data such as Asset Returns is d=0. For a Time Series data such as Asset Prices the Degree of Differencing is usually d=1.
+# Identify AR Order : PACF Cuts Off after p Lags | ACF Tails Off
+# Identify MA Order : ACF Cuts Off after q Lags | PACF Tails Off
+```
+**Inference: This suggests an ARIMA Model with Potential Order (1,0,0) or (0,0,0).**\
+\
+**Partial Autocorrelation Function (PACF) of Logarithm of Daily Return**
+```{r}
+arma_pq_pnj_ds = auto.arima(pnj_ds); arma_pq_pnj_ds #p-lag=2, q-lag=2
+```
+**Inference: This suggests an ARIMA Model with Potential Order (1,0,0) or (0,0,0).**\
+\
+**Partial Autocorrelation Function (PACF) of Logarithm of Daily Return**
+```{r}
+pnj_ds_fpq = forecast(arma_pq_pnj_ds, h = 500)
+plot(pnj_ds_fpq)
+```
+**Inference: There are no significant partial auto-correlations in the Log of Daily Return of the stock.**
+
+**ARIMA MODEL WITH ORDER(0,0,0)**
+```{r}
+# Ljung-Box Test for Autocorrelation - Model Residuals
+# ****************************************************
+
+lb_test_arma_pq_pnj_ds = Box.test(arma_pq_pnj_ds$residuals); lb_test_arma_pq_pnj_ds
+#p-value>alpha
+```
+### Checking for Heteroskedasticity or Volatility Clustering for ARIMA Model 1
+
+**Box Test for Heteroscedasticity**\
+Null Hypothesis - H0: There is No Heteroscedasticity in the residuals\
+Alternate Hypothesis - H1: There is Heteroscedasticity in the residuals
+
+```{r}
+
+# Test for Volatility Clustering or Heteroskedasticity: Box Test 
+pnj_ret_sq = arma_pq_pnj_ds$residuals^2 # Residual Variance (Since Mean Returns is approx. 0)
+plot(pnj_ret_sq)
+pnj_ret_sq_box_test = Box.test(pnj_ret_sq, lag = 2) # H0: Return Variance Series is Not Serially Correlated
+pnj_ret_sq_box_test # Inference : Return Variance Series is Autocorrelated (Has Volatility Clustering)
+```
+
+```{r}
+# Test for Volatility Clustering or Heteroskedasticity: ARCH Test
+pnj_ret_arch_test = ArchTest(arma_pq_pnj_ds$residuals^2, lags = 2) # H0: No ARCH Effects
+pnj_ret_arch_test # Inference : Return Series is Heteroskedastic (Has Volatility Clustering)
+```
+
+### Capturing Volatility with GARCH Model
+
+The GARCH (Generalized Auto-Regressive Conditional Heteroscedasticity) model is a statistical model used to capture the time-varying volatility or variance clustering observed in financial time series data. It extends the ARCH model by incorporating not only past squared residuals but also past volatility values to model the conditional variance of the data.\
+\
+**Standard GARCH Model with Constant Mean and AR Order 0**
+```{r}
+# GARCH Model
+garch_model1 = ugarchspec(variance.model = list(model = 'sGARCH', garchOrder = c(1,1)), mean.model = list(armaOrder = c(0,0), include.mean = TRUE))
+pnj_ret_garch1 = ugarchfit(garch_model1, data = arma_pq_pnj_ds$residuals^2); pnj_ret_garch1
+
+```
+
+**ARCH LM Test for Heteroscedasticity**\
+Null Hypothesis - H0: There is No Heteroscedasticity in the residuals\
+Alternate Hypothesis - H1: There is Heteroscedasticity in the residuals
+
+```{r}
+# Test for Volatility Clustering or Heteroskedasticity: ARCH Test
+pnj_garch_arch_test = ArchTest(residuals(pnj_ret_garch1)^2, lags = 1) # H0: No ARCH Effects
+pnj_garch_arch_test # Inference : Return Series is Heteroskedastic (Has Volatility Clustering)
+#pnj_ret_garch1
+```
+**Inference: Residuals of GARCH Model 1 may not have conditional heteroscedasticity.**
+```{r}
+garch_model2 = ugarchspec(variance.model = list(model = 'sGARCH', garchOrder = c(1,1)), mean.model = list(armaOrder = c(2,2), include.mean = FALSE))
+pnj_ret_garch2 = ugarchfit(garch_model2, data = pnj_ds); pnj_ret_garch2
+
+# GARCH Forecast
+pnj_ret_garch_forecast1 = ugarchforecast(pnj_ret_garch1, n.ahead = 500); pnj_ret_garch_forecast1
+pnj_ret_garch_forecast2 = ugarchforecast(pnj_ret_garch2, n.ahead = 500); pnj_ret_garch_forecast2
+```
+
+```{r}
+plot(pnj_ret_garch_forecast2)
+```
+**Inference:** The trend in data is no longer visible, and it seems that data might have become stationary.
